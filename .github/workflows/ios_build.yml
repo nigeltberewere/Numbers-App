@@ -1,11 +1,13 @@
 name: Build iOS for Sideloading
 
 on:
-  workflow_dispatch: # Allows you to click a button to start the build.
+  workflow_dispatch: # Manual trigger
+  push:
+    branches: [ main ] # Trigger on push to main
 
 jobs:
   build_ios:
-    runs-on: macos-latest # Uses GitHub's virtual Mac
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
 
@@ -14,14 +16,31 @@ jobs:
         with:
           channel: 'stable'
 
-      # RE-INJECT YOUR KEYS (From the previous step)
+      # 1. CLEANUP (Fixes "Podfile" errors)
+      - name: Clean Build Files
+        run: |
+          rm -rf ios/Pods
+          rm -f ios/Podfile.lock
+          rm -rf ios/.symlinks
+          flutter clean
+
+      # 2. INJECT KEYS (Keeps your API keys working)
       - name: Create .env file
         run: echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
 
       - name: Install dependencies
         run: flutter pub get
 
-      # THE MAGIC TRICK: Build unsigned .app and zip it manually into an .ipa
+      # 3. THE FIX: FORCE DISABLE SIGNING (Hacks the project file)
+      - name: Disable Signing in Xcode Project
+        run: |
+          # Disable signing in the project file
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGNING_REQUIRED = YES/CODE_SIGNING_REQUIRED = NO/g' ios/Runner.xcodeproj/project.pbxproj
+          # Remove any existing Team ID
+          sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
+
+      # 4. BUILD (Unsigned)
       - name: Build iOS (Unsigned)
         run: |
           flutter build ios --release --no-codesign
@@ -29,7 +48,7 @@ jobs:
           mv build/ios/iphoneos/Runner.app Payload
           zip -qq -r -9 release.ipa Payload
 
-      # Upload the result so you can download it
+      # 5. UPLOAD (Download this file later)
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
