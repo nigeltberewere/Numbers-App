@@ -1,7 +1,7 @@
 name: Build iOS for Sideloading
 
 on:
-  workflow_dispatch: # Allows you to click a button to start the build
+  workflow_dispatch: # Allows you to click a button to start the build.
 
 jobs:
   build_ios:
