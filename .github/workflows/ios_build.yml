@@ -23,9 +23,27 @@ jobs:
           rm -f ios/Podfile.lock
           flutter clean
 
-      # 2. INJECT KEYS
+      # 2. INJECT KEYS - create .env for OPENAI (existing)
       - name: Create .env file
         run: echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+
+      # 2b. INJECT KEYS - create lib/utils/constants.dart from GEMINI secret (CI only)
+      - name: Create lib/utils/constants.dart from GEMINI secret
+        # Expose the secret to the runner only for this step
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          key = os.environ.get('GEMINI_API_KEY', '')
+          pathlib.Path('lib/utils').mkdir(parents=True, exist_ok=True)
+          with open('lib/utils/constants.dart', 'w') as f:
+              f.write('// Auto-generated in CI. DO NOT COMMIT.\n')
+              f.write('class AppConstants {\n')
+              f.write('  static const String geminiApiKey = %s;\n' % json.dumps(key))
+              f.write('}\n')
+          print('WROTE lib/utils/constants.dart (CI-only)')
+          PY
 
       - name: Install dependencies
         run: flutter pub get
