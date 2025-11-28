@@ -16,7 +16,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # 1. CLEANUP (Fixes "Podfile" errors)
+      # 1. CLEANUP (Fixes "Podfile" and cache errors)
       - name: Clean Build Files
         run: |
           rm -rf ios/Pods
@@ -31,19 +31,28 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 3. THE FIX: FORCE DISABLE SIGNING (Hacks the project file)
-      - name: Disable Signing in Xcode Project
+      # 3. THE NUCLEAR FIX: Force disable signing using regex
+      - name: Force Disable Signing
         run: |
-          # Disable signing in the project file
-          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGNING_REQUIRED = YES/CODE_SIGNING_REQUIRED = NO/g' ios/Runner.xcodeproj/project.pbxproj
-          # Remove any existing Team ID
-          sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          cd ios/Runner.xcodeproj
+          # Turn off "Automatically Manage Signing"
+          sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' project.pbxproj
+          # Force signing to be optional
+          sed -i '' 's/CODE_SIGNING_REQUIRED = .*/CODE_SIGNING_REQUIRED = NO;/g' project.pbxproj
+          sed -i '' 's/CODE_SIGNING_ALLOWED = .*/CODE_SIGNING_ALLOWED = NO;/g' project.pbxproj
+          # Remove the Development Team ID completely
+          sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' project.pbxproj
+          # Clear any specific provisioning profile requirements
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = "";/g' project.pbxproj
+          cd ../..
 
       # 4. BUILD (Unsigned)
       - name: Build iOS (Unsigned)
         run: |
+          # We use --no-codesign, but the sed commands above make sure Flutter actually believes us
           flutter build ios --release --no-codesign
+          
+          # Package the app
           mkdir Payload
           mv build/ios/iphoneos/Runner.app Payload
           zip -qq -r -9 release.ipa Payload
